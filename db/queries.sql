@@ -19,10 +19,8 @@ INSERT INTO organization(
     id,
     name)
 VALUES (
-    sqlc.arg(
-        'id'),
-    sqlc.arg(
-        'name'))
+    sqlc.arg('id'),
+    sqlc.arg('name'))
 RETURNING
     *;
 
@@ -47,10 +45,8 @@ INSERT INTO program(
     organization_id,
     name)
 VALUES (
-    sqlc.arg(
-        'organization_id'),
-    sqlc.arg(
-        'name'))
+    sqlc.arg('organization_id'),
+    sqlc.arg('name'))
 RETURNING
     *;
 
@@ -77,12 +73,9 @@ INSERT INTO transfer(
     amount,
     description)
 VALUES (
-    sqlc.arg(
-        'program_id'),
-    sqlc.arg(
-        'amount'),
-    sqlc.arg(
-        'description'))
+    sqlc.arg('program_id'),
+    sqlc.arg('amount'),
+    sqlc.arg('description'))
 RETURNING
     *;
 
@@ -109,11 +102,8 @@ INSERT INTO ledger_entry(
     amount,
     entry_type)
 VALUES (
-    sqlc.arg(
-        'transfer_id'),
-    sqlc.arg(
-        'amount'),
-    sqlc.arg(
-        'entry_type'))
+    sqlc.arg('transfer_id'),
+    sqlc.arg('amount'),
+    sqlc.arg('entry_type'))
 RETURNING
     *;
