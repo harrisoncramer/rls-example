@@ -68,13 +68,13 @@ func TestPrismaBypass_AdminCanWriteToAnyTenant(t *testing.T) {
 	ctx := context.Background()
 	queries := db.New(conn)
 
-	_, err = queries.CreateProgram(ctx, &db.CreateProgramParams{
+	_, err = queries.AdminCreateProgram(ctx, &db.AdminCreateProgramParams{
 		OrganizationID: org1ID,
 		Name:           "Admin Program for Org1",
 	})
 	require.NoError(t, err)
 
-	_, err = queries.CreateProgram(ctx, &db.CreateProgramParams{
+	_, err = queries.AdminCreateProgram(ctx, &db.AdminCreateProgramParams{
 		OrganizationID: org2ID,
 		Name:           "Admin Program for Org2",
 	})
@@ -167,7 +167,7 @@ func TestPrismaBypass_AdminRunsCrossTenantOperations(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = queries.CreateProgram(ctx, &db.CreateProgramParams{
+	_, err = queries.AdminCreateProgram(ctx, &db.AdminCreateProgramParams{
 		OrganizationID: newOrgID, Name: "New Program",
 	})
 	require.NoError(t, err)

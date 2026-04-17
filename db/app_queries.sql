@@ -41,11 +41,10 @@ ORDER BY
     created_at;
 
 -- name: CreateProgram :one
+-- organization_id is auto-populated from the session variable via column default
 INSERT INTO program(
-    organization_id,
     name)
 VALUES (
-    sqlc.arg('organization_id'),
     sqlc.arg('name'))
 RETURNING
     *;

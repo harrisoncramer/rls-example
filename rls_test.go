@@ -62,13 +62,13 @@ func seedTwoOrgs(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
-	prog1, err := queries.CreateProgram(ctx, &db.CreateProgramParams{
+	prog1, err := queries.AdminCreateProgram(ctx, &db.AdminCreateProgramParams{
 		OrganizationID: org1ID, Name: "Program Alpha",
 	})
 	if err != nil {
 		return err
 	}
-	prog2, err := queries.CreateProgram(ctx, &db.CreateProgramParams{
+	prog2, err := queries.AdminCreateProgram(ctx, &db.AdminCreateProgramParams{
 		OrganizationID: org2ID, Name: "Program Beta",
 	})
 	if err != nil {
@@ -227,11 +227,10 @@ func TestRLS_SwitchingOrgContext(t *testing.T) {
 }
 
 // TestRLS_InsertBlockedForWrongOrg verifies that the INSERT policy prevents
-// a service from writing data tagged with a different organization_id than
-// the one in the session variable. Even if application code explicitly passes
-// org2's ID while the session is set to org1, Postgres rejects it. This is
-// the safety net that application-layer filters can't provide — a bug in
-// the service code can't accidentally write cross-tenant data.
+// writing data tagged with a different organization_id than the session
+// variable, even when the org_id is passed explicitly (bypassing the column
+// default). This is the database-level safety net — a bug in the service
+// code can't accidentally write cross-tenant data.
 func TestRLS_InsertBlockedForWrongOrg(t *testing.T) {
 	tdb, err := dbtest.New(t, seedTwoOrgs)
 	require.NoError(t, err)
@@ -243,7 +242,10 @@ func TestRLS_InsertBlockedForWrongOrg(t *testing.T) {
 
 	require.NoError(t, rls.SetOrg(ctx, conn, org1ID))
 
-	_, err = queries.CreateProgram(ctx, &db.CreateProgramParams{
+	// Use the admin query which explicitly passes organization_id.
+	// Even though the column value is org2, the RLS INSERT policy
+	// checks it against the session variable (org1) and rejects it.
+	_, err = queries.AdminCreateProgram(ctx, &db.AdminCreateProgramParams{
 		OrganizationID: org2ID,
 		Name:           "Sneaky Program",
 	})

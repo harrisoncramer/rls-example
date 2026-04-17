@@ -2,6 +2,16 @@
 -- accept organization_id rather than relying on the session variable default.
 -- Used for seeding, backfills, cross-tenant background jobs, and migrations.
 
+-- name: AdminCreateProgram :one
+INSERT INTO program (
+    organization_id,
+    name)
+VALUES (
+    sqlc.arg ('organization_id'),
+    sqlc.arg ('name'))
+RETURNING
+    *;
+
 -- name: AdminCreateTransfer :one
 INSERT INTO transfer (
     id,

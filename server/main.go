@@ -1,3 +1,11 @@
+// This is the entry point for the RLS demo server. It creates a single
+// pgxpool.Pool hardened with rls.ConfigurePool (every connection defaults to
+// app_user), wires up the gin router, and runs with graceful shutdown.
+//
+// The pool is the only database resource. It's shared by all middleware and
+// handlers. The AfterConnect hook on the pool ensures that even if a request
+// somehow bypasses the middleware chain, it can never run as the postgres
+// superuser — the worst case is app_user with no org set, which sees nothing.
 package main
 
 import (
@@ -10,8 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/harrisoncramer/rls-example/internal/rls"
 )
 
 func main() {
@@ -28,31 +37,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	r := gin.Default()
-	r.GET("/healthz", func(c *gin.Context) { c.Status(http.StatusOK) })
-
-	rlsMiddleware := NewRLSMiddleware(pool)
-	h := NewHandler(pool)
-
-	admin := r.Group("/admin")
-	admin.Use(rlsMiddleware.Admin())
-	{
-		admin.POST("/organizations", h.CreateOrganization)
-		admin.GET("/organizations", h.ListOrganizations)
-	}
-
-	scoped := r.Group("")
-	scoped.Use(rlsMiddleware.Scoped())
-	{
-		scoped.POST("/programs", h.CreateProgram)
-		scoped.GET("/programs", h.ListPrograms)
-
-		scoped.POST("/transfers", h.CreateTransfer)
-		scoped.GET("/transfers", h.ListTransfers)
-
-		scoped.POST("/ledger-entries", h.CreateLedgerEntry)
-		scoped.GET("/ledger-entries", h.ListLedgerEntries)
-	}
+	r := SetupRouter(pool)
 
 	srv := &http.Server{
 		Addr:    ":8080",
@@ -80,11 +65,24 @@ func main() {
 	log.Println("server stopped")
 }
 
+// waitForPool creates a pool where every connection defaults to the app_user
+// role. This is the safety net: if a handler skips the RLS middleware entirely,
+// it still runs as app_user with no org set, which means RLS denies all access
+// (NULL doesn't match any UUID). Data leaks become "see nothing" bugs instead
+// of "see everything" bugs.
+//
+// The admin middleware explicitly upgrades to app_system when needed.
 func waitForPool(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database URL: %w", err)
+	}
+
+	rls.ConfigurePool(config)
+
 	var pool *pgxpool.Pool
-	var err error
 	for range 30 {
-		pool, err = pgxpool.New(ctx, dbURL)
+		pool, err = pgxpool.NewWithConfig(ctx, config)
 		if err == nil {
 			if pingErr := pool.Ping(ctx); pingErr == nil {
 				return pool, nil

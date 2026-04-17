@@ -18,6 +18,21 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// ConfigurePool sets up the AfterConnect hook on a pool config so that every
+// new connection defaults to the app_user role. This is the safety net: any
+// connection acquired from the pool is subject to RLS. If a handler skips the
+// scoped middleware, it runs as app_user with no org set — which sees nothing
+// (NULL doesn't match any UUID). Admin middleware explicitly upgrades to
+// app_system when needed.
+func ConfigurePool(config *pgxpool.Config) {
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		if _, err := conn.Exec(ctx, "SET ROLE app_user"); err != nil {
+			return fmt.Errorf("failed to set default role app_user: %w", err)
+		}
+		return nil
+	}
+}
+
 // AcquireAsAppUser gets a connection from the pool and switches to the app_user
 // role. The postgres superuser bypasses RLS even with FORCE ROW LEVEL SECURITY,
 // so we need a non-superuser role to actually exercise RLS policies. The

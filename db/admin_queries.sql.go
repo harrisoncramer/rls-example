@@ -52,8 +52,40 @@ func (q *Queries) AdminCreateLedgerEntry(ctx context.Context, arg *AdminCreateLe
 	return &i, err
 }
 
-const adminCreateTransfer = `-- name: AdminCreateTransfer :one
+const adminCreateProgram = `-- name: AdminCreateProgram :one
 
+INSERT INTO program (
+    organization_id,
+    name)
+VALUES (
+    $1,
+    $2)
+RETURNING
+    id, organization_id, name, created_at, updated_at
+`
+
+type AdminCreateProgramParams struct {
+	OrganizationID uuid.UUID
+	Name           string
+}
+
+// Admin queries run under the app_system role (BYPASSRLS). They explicitly
+// accept organization_id rather than relying on the session variable default.
+// Used for seeding, backfills, cross-tenant background jobs, and migrations.
+func (q *Queries) AdminCreateProgram(ctx context.Context, arg *AdminCreateProgramParams) (*Program, error) {
+	row := q.db.QueryRow(ctx, adminCreateProgram, arg.OrganizationID, arg.Name)
+	var i Program
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
+const adminCreateTransfer = `-- name: AdminCreateTransfer :one
 INSERT INTO transfer (
     id,
     program_id,
@@ -78,9 +110,6 @@ type AdminCreateTransferParams struct {
 	Description    *string
 }
 
-// Admin queries run under the app_system role (BYPASSRLS). They explicitly
-// accept organization_id rather than relying on the session variable default.
-// Used for seeding, backfills, cross-tenant background jobs, and migrations.
 func (q *Queries) AdminCreateTransfer(ctx context.Context, arg *AdminCreateTransferParams) (*Transfer, error) {
 	row := q.db.QueryRow(ctx, adminCreateTransfer,
 		arg.ID,

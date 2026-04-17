@@ -27,6 +27,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 -- Set column defaults to auto-populate from the session variable.
 -- When a service sets `SET app.current_org = '<uuid>'` on checkout,
 -- all inserts into these tables will get organization_id for free.
+ALTER TABLE program
+    ALTER COLUMN organization_id SET DEFAULT current_setting('app.current_org', true)::uuid;
+
 ALTER TABLE transfer
     ALTER COLUMN organization_id SET DEFAULT current_setting('app.current_org', true)::uuid;
 

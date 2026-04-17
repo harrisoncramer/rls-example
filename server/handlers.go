@@ -60,8 +60,6 @@ func (h *Handler) ListOrganizations(c *gin.Context) {
 }
 
 func (h *Handler) CreateProgram(c *gin.Context) {
-	orgID, _ := uuid.Parse(c.GetHeader("X-Organization-ID"))
-
 	var body struct {
 		Name string `json:"name" binding:"required"`
 	}
@@ -73,10 +71,7 @@ func (h *Handler) CreateProgram(c *gin.Context) {
 	conn := ConnFromContext(c)
 	queries := db.New(conn)
 
-	program, err := queries.CreateProgram(c.Request.Context(), &db.CreateProgramParams{
-		OrganizationID: orgID,
-		Name:           body.Name,
-	})
+	program, err := queries.CreateProgram(c.Request.Context(), body.Name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

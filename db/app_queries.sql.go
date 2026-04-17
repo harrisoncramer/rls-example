@@ -75,22 +75,16 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg *CreateOrganizatio
 
 const createProgram = `-- name: CreateProgram :one
 INSERT INTO program(
-    organization_id,
     name)
 VALUES (
-    $1,
-    $2)
+    $1)
 RETURNING
     id, organization_id, name, created_at, updated_at
 `
 
-type CreateProgramParams struct {
-	OrganizationID uuid.UUID
-	Name           string
-}
-
-func (q *Queries) CreateProgram(ctx context.Context, arg *CreateProgramParams) (*Program, error) {
-	row := q.db.QueryRow(ctx, createProgram, arg.OrganizationID, arg.Name)
+// organization_id is auto-populated from the session variable via column default
+func (q *Queries) CreateProgram(ctx context.Context, name string) (*Program, error) {
+	row := q.db.QueryRow(ctx, createProgram, name)
 	var i Program
 	err := row.Scan(
 		&i.ID,
