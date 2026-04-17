@@ -15,5 +15,19 @@ services:
       timeout: 5s
       retries: 5
 
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@db:5432/rls_example?sslmode=disable"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
