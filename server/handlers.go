@@ -1,3 +1,13 @@
+// Handlers for the RLS demo server. Each handler pulls a pre-configured
+// connection from the gin context (set by the Conn() middleware) and runs
+// SQLC-generated queries against it.
+//
+// Handlers never reference organization_id. For scoped routes, the org is
+// already baked into the connection via the app.current_org session variable.
+// For admin routes, the connection runs as app_system which bypasses RLS.
+// The SQLC-generated insert functions (CreateProgram, CreateTransfer,
+// CreateLedgerEntry) omit organization_id from their params — the column
+// default current_setting('app.current_org')::uuid handles it.
 package main
 
 import (
@@ -10,9 +20,7 @@ import (
 	"github.com/harrisoncramer/rls-example/db"
 )
 
-// Handler holds dependencies for all route handlers. In Chariot, each domain
-// (disbursements, transfers, etc.) has its own handler struct with its own
-// service dependencies. For this demo, one struct covers all endpoints.
+// Handler holds dependencies for all route handlers.
 type Handler struct {
 	pool *pgxpool.Pool
 }

@@ -1,3 +1,24 @@
+// Middleware for managing per-request database connections with RLS.
+//
+// The middleware stack has three pieces that work together:
+//
+//   - Conn(): Global middleware. Acquires a pooled connection (already app_user
+//     via AfterConnect) and sets app.current_org from the X-Organization-ID
+//     header when present. Every request gets a connection; handlers pull it
+//     from gin.Context via ConnFromContext(). Connection is released after the
+//     handler chain completes.
+//
+//   - RequireOrg(): Lightweight guard. No DB work — just rejects requests
+//     without the org header. Applied to route groups that need tenant context.
+//
+//   - Admin(): Upgrades the connection (already in context from Conn()) from
+//     app_user to app_system. Applied to admin route groups that need
+//     cross-tenant access. Resets the role back to app_user after the handler.
+//
+// The key property: Conn() and Admin() operate on the same connection. Conn()
+// acquires it and Admin() upgrades it. This means we never hold two connections
+// per request, and the role upgrade only happens for routes that explicitly
+// opt into it.
 package main
 
 import (

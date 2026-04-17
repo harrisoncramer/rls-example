@@ -7,16 +7,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// SetupRouter creates and configures the gin router. The pool is hardened
-// via rls.ConfigurePool so every connection defaults to app_user.
+// SetupRouter creates the gin router with three layers of defense:
 //
-// The Conn() middleware runs globally — every request gets a connection.
-// If X-Organization-ID is present, the org is set on the connection. If
-// absent, the connection is still app_user with no org (sees nothing).
+//  1. Pool level (rls.ConfigurePool): every connection defaults to app_user.
+//     A route that somehow bypasses all middleware sees nothing.
 //
-// Admin routes explicitly upgrade to app_system. Scoped routes enforce
-// the org header via RequireOrg(). A route registered outside either group
-// would get a connection but see nothing — safe by default.
+//  2. Global Conn() middleware: acquires a connection per request and sets
+//     app.current_org from X-Organization-ID when present. If absent, the
+//     connection is still app_user with no org — RLS denies all access.
+//
+//  3. Route-group level:
+//     - Admin group: upgrades the connection to app_system (bypass RLS).
+//       This is the only way to opt out of tenant scoping.
+//     - Scoped group: enforces X-Organization-ID via RequireOrg(). The org
+//       was already set by Conn() — RequireOrg just validates it was present.
+//
+// A new route added to the scoped group automatically inherits RLS enforcement.
+// A new route added directly to the engine (outside both groups) gets a
+// connection via Conn() but with no org set — it sees nothing. Safety is the
+// default; you have to explicitly opt into admin access.
 func SetupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r := gin.Default()
 	r.GET("/healthz", func(c *gin.Context) { c.Status(http.StatusOK) })
@@ -26,6 +35,9 @@ func SetupRouter(pool *pgxpool.Pool) *gin.Engine {
 
 	h := NewHandler(pool)
 
+	// Admin routes opt out of RLS by upgrading the connection to app_system.
+	// These are for cross-tenant operations like creating organizations,
+	// running backfills, or viewing platform-wide analytics.
 	admin := r.Group("/admin")
 	admin.Use(rlsMiddleware.Admin())
 	{
@@ -33,6 +45,11 @@ func SetupRouter(pool *pgxpool.Pool) *gin.Engine {
 		admin.GET("/organizations", h.ListOrganizations)
 	}
 
+	// Scoped routes require X-Organization-ID. The Conn() middleware already
+	// set app.current_org on the connection — RequireOrg() just rejects
+	// requests that didn't provide the header. Handlers never touch
+	// organization_id directly; it's auto-populated via column defaults
+	// from the session variable.
 	scoped := r.Group("", RequireOrg())
 	{
 		scoped.POST("/programs", h.CreateProgram)
