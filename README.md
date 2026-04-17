@@ -25,7 +25,7 @@ mise run db:up
 
 Prisma manages the schema and migrations. There are six, each representing a phase of the migration plan:
 
-1. `00001_init` creates the tables. `organization` and `program` have direct `organization_id`. `transfer` only has `program_id` and `ledger_entry` only has `transfer_id` (indirectly scoped through FK chains, like our real schema).
+1. `00001_init` creates the tables. `organization` and `program` have direct `organization_id`. `transfer` only has `program_id` and `ledger_entry` only has `transfer_id` (indirectly scoped through FK chains).
 2. `00002_add_org_columns` adds nullable `organization_id` to `transfer` and `ledger_entry`. Metadata-only operation, no table rewrite.
 3. `00003_connection_layer` creates `app_user` and `app_system` roles, then sets column defaults to `current_setting('app.current_org', true)::uuid` so new inserts auto-populate `organization_id` from the session variable.
 4. `00004_backfill` backfills existing rows from parent FK chains.
