@@ -67,7 +67,7 @@ After the migration, `transfer` and `ledger_entry` both have a denormalized `org
 
 ### Session variable column defaults
 
-The key insight: instead of updating every insert codepath to explicitly pass `organization_id`, we set the column default to `current_setting('app.current_org', true)::uuid`. When a service sets `SET app.current_org = '<uuid>'` on connection checkout, all inserts into these tables get `organization_id` for free.
+ Instead of updating every insert codepath to explicitly pass `organization_id`, we set the column default to `current_setting('app.current_org', true)::uuid`. When a service sets `SET app.current_org = '<uuid>'` on connection checkout, all inserts into these tables get `organization_id` for free.
 
 The SQLC-generated `CreateTransfer` and `CreateLedgerEntry` functions don't even have `organization_id` in their params structs. The column default handles it.
 
