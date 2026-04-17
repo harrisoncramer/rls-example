@@ -1,7 +1,6 @@
 package dbtest
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,16 +10,7 @@ import (
 	"testing"
 
 	"github.com/chariot-giving/blueprint"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
-
-// DBTX matches the interface that SQLC and pgxpool both satisfy.
-type DBTX interface {
-	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
 
 // New creates a test database with all migrations applied.
 func New(t *testing.T, preFuncs ...blueprint.PreFunc) (*blueprint.TestDb, error) {
@@ -45,24 +35,6 @@ func New(t *testing.T, preFuncs ...blueprint.PreFunc) (*blueprint.TestDb, error)
 		blueprint.WithMigrations(migrations...),
 		blueprint.WithPreFuncs(preFuncs...),
 	)
-}
-
-// SetOrg sets the app.current_org session variable on a connection.
-func SetOrg(ctx context.Context, db DBTX, orgID string) error {
-	_, err := db.Exec(ctx, fmt.Sprintf("SET app.current_org = '%s'", orgID))
-	if err != nil {
-		return fmt.Errorf("failed to set app.current_org: %w", err)
-	}
-	return nil
-}
-
-// ResetOrg clears the app.current_org session variable.
-func ResetOrg(ctx context.Context, db DBTX) error {
-	_, err := db.Exec(ctx, "RESET app.current_org")
-	if err != nil {
-		return fmt.Errorf("failed to reset app.current_org: %w", err)
-	}
-	return nil
 }
 
 func getMigrations() ([]blueprint.Migration, error) {
