@@ -11,24 +11,27 @@ import (
 	"github.com/google/uuid"
 )
 
-const createAccount = `-- name: CreateAccount :one
-INSERT INTO account (organization_id, email) VALUES ($1, $2) RETURNING id, organization_id, email, created_at, updated_at
+const createLedgerEntry = `-- name: CreateLedgerEntry :one
+INSERT INTO ledger_entry (transfer_id, amount, entry_type) VALUES ($1, $2, $3) RETURNING id, transfer_id, amount, entry_type, created_at, organization_id
 `
 
-type CreateAccountParams struct {
-	OrganizationID uuid.UUID
-	Email          string
+type CreateLedgerEntryParams struct {
+	TransferID uuid.UUID
+	Amount     int32
+	EntryType  string
 }
 
-func (q *Queries) CreateAccount(ctx context.Context, arg *CreateAccountParams) (*Account, error) {
-	row := q.db.QueryRow(ctx, createAccount, arg.OrganizationID, arg.Email)
-	var i Account
+// organization_id is auto-populated from the session variable via column default
+func (q *Queries) CreateLedgerEntry(ctx context.Context, arg *CreateLedgerEntryParams) (*LedgerEntry, error) {
+	row := q.db.QueryRow(ctx, createLedgerEntry, arg.TransferID, arg.Amount, arg.EntryType)
+	var i LedgerEntry
 	err := row.Scan(
 		&i.ID,
-		&i.OrganizationID,
-		&i.Email,
+		&i.TransferID,
+		&i.Amount,
+		&i.EntryType,
 		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.OrganizationID,
 	)
 	return &i, err
 }
@@ -54,43 +57,68 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg *CreateOrganizatio
 	return &i, err
 }
 
-const createProject = `-- name: CreateProject :one
-INSERT INTO project (organization_id, name, description) VALUES ($1, $2, $3) RETURNING id, organization_id, name, description, created_at, updated_at
+const createProgram = `-- name: CreateProgram :one
+INSERT INTO program (organization_id, name) VALUES ($1, $2) RETURNING id, organization_id, name, created_at, updated_at
 `
 
-type CreateProjectParams struct {
+type CreateProgramParams struct {
 	OrganizationID uuid.UUID
 	Name           string
-	Description    *string
 }
 
-func (q *Queries) CreateProject(ctx context.Context, arg *CreateProjectParams) (*Project, error) {
-	row := q.db.QueryRow(ctx, createProject, arg.OrganizationID, arg.Name, arg.Description)
-	var i Project
+func (q *Queries) CreateProgram(ctx context.Context, arg *CreateProgramParams) (*Program, error) {
+	row := q.db.QueryRow(ctx, createProgram, arg.OrganizationID, arg.Name)
+	var i Program
 	err := row.Scan(
 		&i.ID,
 		&i.OrganizationID,
 		&i.Name,
-		&i.Description,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return &i, err
 }
 
-const getAccount = `-- name: GetAccount :one
-SELECT id, organization_id, email, created_at, updated_at FROM account WHERE id = $1
+const createTransfer = `-- name: CreateTransfer :one
+INSERT INTO transfer (program_id, amount, description) VALUES ($1, $2, $3) RETURNING id, program_id, amount, description, created_at, updated_at, organization_id
 `
 
-func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (*Account, error) {
-	row := q.db.QueryRow(ctx, getAccount, id)
-	var i Account
+type CreateTransferParams struct {
+	ProgramID   uuid.UUID
+	Amount      int32
+	Description *string
+}
+
+// organization_id is auto-populated from the session variable via column default
+func (q *Queries) CreateTransfer(ctx context.Context, arg *CreateTransferParams) (*Transfer, error) {
+	row := q.db.QueryRow(ctx, createTransfer, arg.ProgramID, arg.Amount, arg.Description)
+	var i Transfer
 	err := row.Scan(
 		&i.ID,
-		&i.OrganizationID,
-		&i.Email,
+		&i.ProgramID,
+		&i.Amount,
+		&i.Description,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrganizationID,
+	)
+	return &i, err
+}
+
+const getLedgerEntry = `-- name: GetLedgerEntry :one
+SELECT id, transfer_id, amount, entry_type, created_at, organization_id FROM ledger_entry WHERE id = $1
+`
+
+func (q *Queries) GetLedgerEntry(ctx context.Context, id uuid.UUID) (*LedgerEntry, error) {
+	row := q.db.QueryRow(ctx, getLedgerEntry, id)
+	var i LedgerEntry
+	err := row.Scan(
+		&i.ID,
+		&i.TransferID,
+		&i.Amount,
+		&i.EntryType,
+		&i.CreatedAt,
+		&i.OrganizationID,
 	)
 	return &i, err
 }
@@ -111,43 +139,62 @@ func (q *Queries) GetOrganization(ctx context.Context, id uuid.UUID) (*Organizat
 	return &i, err
 }
 
-const getProject = `-- name: GetProject :one
-SELECT id, organization_id, name, description, created_at, updated_at FROM project WHERE id = $1
+const getProgram = `-- name: GetProgram :one
+SELECT id, organization_id, name, created_at, updated_at FROM program WHERE id = $1
 `
 
-func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (*Project, error) {
-	row := q.db.QueryRow(ctx, getProject, id)
-	var i Project
+func (q *Queries) GetProgram(ctx context.Context, id uuid.UUID) (*Program, error) {
+	row := q.db.QueryRow(ctx, getProgram, id)
+	var i Program
 	err := row.Scan(
 		&i.ID,
 		&i.OrganizationID,
 		&i.Name,
-		&i.Description,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return &i, err
 }
 
-const listAccounts = `-- name: ListAccounts :many
-SELECT id, organization_id, email, created_at, updated_at FROM account ORDER BY created_at
+const getTransfer = `-- name: GetTransfer :one
+SELECT id, program_id, amount, description, created_at, updated_at, organization_id FROM transfer WHERE id = $1
 `
 
-func (q *Queries) ListAccounts(ctx context.Context) ([]*Account, error) {
-	rows, err := q.db.Query(ctx, listAccounts)
+func (q *Queries) GetTransfer(ctx context.Context, id uuid.UUID) (*Transfer, error) {
+	row := q.db.QueryRow(ctx, getTransfer, id)
+	var i Transfer
+	err := row.Scan(
+		&i.ID,
+		&i.ProgramID,
+		&i.Amount,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OrganizationID,
+	)
+	return &i, err
+}
+
+const listLedgerEntries = `-- name: ListLedgerEntries :many
+SELECT id, transfer_id, amount, entry_type, created_at, organization_id FROM ledger_entry ORDER BY created_at
+`
+
+func (q *Queries) ListLedgerEntries(ctx context.Context) ([]*LedgerEntry, error) {
+	rows, err := q.db.Query(ctx, listLedgerEntries)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []*Account
+	var items []*LedgerEntry
 	for rows.Next() {
-		var i Account
+		var i LedgerEntry
 		if err := rows.Scan(
 			&i.ID,
-			&i.OrganizationID,
-			&i.Email,
+			&i.TransferID,
+			&i.Amount,
+			&i.EntryType,
 			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.OrganizationID,
 		); err != nil {
 			return nil, err
 		}
@@ -188,26 +235,57 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]*Organization, error
 	return items, nil
 }
 
-const listProjects = `-- name: ListProjects :many
-SELECT id, organization_id, name, description, created_at, updated_at FROM project ORDER BY created_at
+const listPrograms = `-- name: ListPrograms :many
+SELECT id, organization_id, name, created_at, updated_at FROM program ORDER BY created_at
 `
 
-func (q *Queries) ListProjects(ctx context.Context) ([]*Project, error) {
-	rows, err := q.db.Query(ctx, listProjects)
+func (q *Queries) ListPrograms(ctx context.Context) ([]*Program, error) {
+	rows, err := q.db.Query(ctx, listPrograms)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []*Project
+	var items []*Program
 	for rows.Next() {
-		var i Project
+		var i Program
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrganizationID,
 			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTransfers = `-- name: ListTransfers :many
+SELECT id, program_id, amount, description, created_at, updated_at, organization_id FROM transfer ORDER BY created_at
+`
+
+func (q *Queries) ListTransfers(ctx context.Context) ([]*Transfer, error) {
+	rows, err := q.db.Query(ctx, listTransfers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*Transfer
+	for rows.Next() {
+		var i Transfer
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProgramID,
+			&i.Amount,
 			&i.Description,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OrganizationID,
 		); err != nil {
 			return nil, err
 		}

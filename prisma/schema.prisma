@@ -13,36 +13,57 @@ model Organization {
   created_at DateTime  @default(now()) @db.Timestamptz(6)
   updated_at DateTime  @default(now()) @db.Timestamptz(6)
 
-  accounts Account[]
-  projects Project[]
+  programs       Program[]
+  transfers      Transfer[]
+  ledger_entries LedgerEntry[]
 
   @@map("organization")
 }
 
-model Account {
-  id              String       @id @default(uuid()) @db.Uuid
-  organization_id String       @db.Uuid
-  email           String       @db.VarChar(255)
-  created_at      DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime     @default(now()) @db.Timestamptz(6)
+model Program {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String   @db.Uuid
+  name            String   @db.VarChar(255)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organization_id], references: [id])
+  transfers    Transfer[]
 
-  @@unique([organization_id, email])
-  @@index([organization_id], map: "idx_account_organization_id")
-  @@map("account")
+  @@index([organization_id], map: "idx_program_organization_id")
+  @@map("program")
 }
 
-model Project {
-  id              String       @id @default(uuid()) @db.Uuid
-  organization_id String       @db.Uuid
-  name            String       @db.VarChar(255)
+model Transfer {
+  id              String   @id @default(uuid()) @db.Uuid
+  program_id      String   @db.Uuid
+  organization_id String   @db.Uuid
+  amount          Int
   description     String?
-  created_at      DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime     @default(now()) @db.Timestamptz(6)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
 
+  program        Program        @relation(fields: [program_id], references: [id])
+  organization   Organization   @relation(fields: [organization_id], references: [id])
+  ledger_entries LedgerEntry[]
+
+  @@index([program_id], map: "idx_transfer_program_id")
+  @@index([organization_id], map: "idx_transfer_organization_id")
+  @@map("transfer")
+}
+
+model LedgerEntry {
+  id              String   @id @default(uuid()) @db.Uuid
+  transfer_id     String   @db.Uuid
+  organization_id String   @db.Uuid
+  amount          Int
+  entry_type      String   @db.VarChar(50)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  transfer     Transfer     @relation(fields: [transfer_id], references: [id])
   organization Organization @relation(fields: [organization_id], references: [id])
 
-  @@index([organization_id], map: "idx_project_organization_id")
-  @@map("project")
+  @@index([transfer_id], map: "idx_ledger_entry_transfer_id")
+  @@index([organization_id], map: "idx_ledger_entry_organization_id")
+  @@map("ledger_entry")
 }

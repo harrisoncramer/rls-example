@@ -10,12 +10,13 @@ import (
 	"github.com/google/uuid"
 )
 
-type Account struct {
+type LedgerEntry struct {
 	ID             uuid.UUID
-	OrganizationID uuid.UUID
-	Email          string
+	TransferID     uuid.UUID
+	Amount         int32
+	EntryType      string
 	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	OrganizationID uuid.UUID
 }
 
 type Organization struct {
@@ -25,11 +26,20 @@ type Organization struct {
 	UpdatedAt time.Time
 }
 
-type Project struct {
+type Program struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
 	Name           string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type Transfer struct {
+	ID             uuid.UUID
+	ProgramID      uuid.UUID
+	Amount         int32
 	Description    *string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	OrganizationID uuid.UUID
 }

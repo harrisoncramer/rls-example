@@ -20,8 +20,6 @@ var (
 	org2ID = uuid.New()
 )
 
-// seedTwoOrgs inserts two organizations with accounts and projects.
-// Runs as the bypass role so RLS doesn't interfere with seeding.
 func seedTwoOrgs(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, `SET ROLE app_system`); err != nil {
 		return err
@@ -34,23 +32,31 @@ func seedTwoOrgs(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
-	if _, err := pool.Exec(ctx, `INSERT INTO account (organization_id, email) VALUES ($1, 'alice@org1.com')`, org1ID); err != nil {
+	prog1ID := uuid.New()
+	prog2ID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO program (id, organization_id, name) VALUES ($1, $2, 'Program Alpha')`, prog1ID, org1ID); err != nil {
 		return err
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO account (organization_id, email) VALUES ($1, 'bob@org1.com')`, org1ID); err != nil {
-		return err
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO account (organization_id, email) VALUES ($1, 'carol@org2.com')`, org2ID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO program (id, organization_id, name) VALUES ($1, $2, 'Program Beta')`, prog2ID, org2ID); err != nil {
 		return err
 	}
 
-	if _, err := pool.Exec(ctx, `INSERT INTO project (organization_id, name, description) VALUES ($1, 'Project Alpha', 'Org 1 project')`, org1ID); err != nil {
+	xfer1ID := uuid.New()
+	xfer2ID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO transfer (id, program_id, organization_id, amount, description) VALUES ($1, $2, $3, 1000, 'Transfer One')`, xfer1ID, prog1ID, org1ID); err != nil {
 		return err
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO project (organization_id, name, description) VALUES ($1, 'Project Beta', 'Another org 1 project')`, org1ID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO transfer (id, program_id, organization_id, amount, description) VALUES ($1, $2, $3, 2000, 'Transfer Two')`, xfer2ID, prog2ID, org2ID); err != nil {
 		return err
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO project (organization_id, name, description) VALUES ($1, 'Project Gamma', 'Org 2 project')`, org2ID); err != nil {
+
+	if _, err := pool.Exec(ctx, `INSERT INTO ledger_entry (transfer_id, organization_id, amount, entry_type) VALUES ($1, $2, 1000, 'debit')`, xfer1ID, org1ID); err != nil {
+		return err
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO ledger_entry (transfer_id, organization_id, amount, entry_type) VALUES ($1, $2, 1000, 'credit')`, xfer1ID, org1ID); err != nil {
+		return err
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO ledger_entry (transfer_id, organization_id, amount, entry_type) VALUES ($1, $2, 2000, 'debit')`, xfer2ID, org2ID); err != nil {
 		return err
 	}
 
@@ -60,17 +66,11 @@ func seedTwoOrgs(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// setOrg sets the app.current_org session variable on a connection.
-// SET doesn't support parameterized queries, so we format the string directly.
-// The orgID is a UUID so there's no injection risk.
 func setOrg(ctx context.Context, conn *pgxpool.Conn, orgID uuid.UUID) error {
 	_, err := conn.Exec(ctx, fmt.Sprintf("SET app.current_org = '%s'", orgID.String()))
 	return err
 }
 
-// acquireAsAppUser gets a single connection and switches to the app_user role.
-// This is important: the postgres superuser bypasses RLS even with FORCE ROW
-// LEVEL SECURITY. We need to use a non-superuser role.
 func acquireAsAppUser(t *testing.T, pool *pgxpool.Pool) *pgxpool.Conn {
 	t.Helper()
 	ctx := context.Background()
@@ -100,19 +100,54 @@ func TestRLS_IsolatesOrganizations(t *testing.T) {
 	assert.Len(t, orgs, 1)
 	assert.Equal(t, "Org One", orgs[0].Name)
 
-	accounts, err := queries.ListAccounts(ctx)
+	programs, err := queries.ListPrograms(ctx)
 	require.NoError(t, err)
-	assert.Len(t, accounts, 2)
-	for _, a := range accounts {
-		assert.Equal(t, org1ID, a.OrganizationID)
-	}
+	assert.Len(t, programs, 1)
+	assert.Equal(t, "Program Alpha", programs[0].Name)
 
-	projects, err := queries.ListProjects(ctx)
+	transfers, err := queries.ListTransfers(ctx)
 	require.NoError(t, err)
-	assert.Len(t, projects, 2)
-	for _, p := range projects {
-		assert.Equal(t, org1ID, p.OrganizationID)
-	}
+	assert.Len(t, transfers, 1)
+	assert.Equal(t, "Transfer One", *transfers[0].Description)
+
+	entries, err := queries.ListLedgerEntries(ctx)
+	require.NoError(t, err)
+	assert.Len(t, entries, 2)
+}
+
+func TestRLS_SessionDefaultPopulatesOrgID(t *testing.T) {
+	tdb, err := dbtest.New(t, seedTwoOrgs)
+	require.NoError(t, err)
+
+	conn := acquireAsAppUser(t, tdb.GetTestPool(t).Pool)
+	ctx := context.Background()
+	queries := db.New(conn)
+
+	require.NoError(t, setOrg(ctx, conn, org1ID))
+
+	programs, err := queries.ListPrograms(ctx)
+	require.NoError(t, err)
+	require.Len(t, programs, 1)
+
+	// Create a transfer WITHOUT explicitly passing organization_id.
+	// The column default current_setting('app.current_org') populates it.
+	transfer, err := queries.CreateTransfer(ctx, &db.CreateTransferParams{
+		ProgramID:   programs[0].ID,
+		Amount:      5000,
+		Description: strPtr("Auto-populated org"),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, org1ID, transfer.OrganizationID,
+		"organization_id should be auto-populated from session variable")
+
+	entry, err := queries.CreateLedgerEntry(ctx, &db.CreateLedgerEntryParams{
+		TransferID: transfer.ID,
+		Amount:     5000,
+		EntryType:  "debit",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, org1ID, entry.OrganizationID,
+		"organization_id should be auto-populated from session variable")
 }
 
 func TestRLS_SwitchingOrgContext(t *testing.T) {
@@ -124,15 +159,15 @@ func TestRLS_SwitchingOrgContext(t *testing.T) {
 	queries := db.New(conn)
 
 	require.NoError(t, setOrg(ctx, conn, org1ID))
-	projects1, err := queries.ListProjects(ctx)
+	transfers1, err := queries.ListTransfers(ctx)
 	require.NoError(t, err)
-	assert.Len(t, projects1, 2)
+	assert.Len(t, transfers1, 1)
 
 	require.NoError(t, setOrg(ctx, conn, org2ID))
-	projects2, err := queries.ListProjects(ctx)
+	transfers2, err := queries.ListTransfers(ctx)
 	require.NoError(t, err)
-	assert.Len(t, projects2, 1)
-	assert.Equal(t, "Project Gamma", projects2[0].Name)
+	assert.Len(t, transfers2, 1)
+	assert.Equal(t, "Transfer Two", *transfers2[0].Description)
 }
 
 func TestRLS_InsertBlockedForWrongOrg(t *testing.T) {
@@ -145,10 +180,9 @@ func TestRLS_InsertBlockedForWrongOrg(t *testing.T) {
 
 	require.NoError(t, setOrg(ctx, conn, org1ID))
 
-	_, err = queries.CreateProject(ctx, &db.CreateProjectParams{
+	_, err = queries.CreateProgram(ctx, &db.CreateProgramParams{
 		OrganizationID: org2ID,
-		Name:           "Sneaky Project",
-		Description:    strPtr("Should not be allowed"),
+		Name:           "Sneaky Program",
 	})
 	assert.Error(t, err, "inserting a row for a different org should fail")
 }
@@ -162,14 +196,15 @@ func TestRLS_GetByIDReturnsNothingForWrongOrg(t *testing.T) {
 	queries := db.New(conn)
 
 	require.NoError(t, setOrg(ctx, conn, org2ID))
-	org2Projects, err := queries.ListProjects(ctx)
+	transfers, err := queries.ListTransfers(ctx)
 	require.NoError(t, err)
-	require.Len(t, org2Projects, 1)
-	org2ProjectID := org2Projects[0].ID
+	require.Len(t, transfers, 1)
+	org2TransferID := transfers[0].ID
 
 	require.NoError(t, setOrg(ctx, conn, org1ID))
-	_, err = queries.GetProject(ctx, org2ProjectID)
-	assert.ErrorIs(t, err, pgx.ErrNoRows, "fetching another org's row by ID should return no rows")
+	_, err = queries.GetTransfer(ctx, org2TransferID)
+	assert.ErrorIs(t, err, pgx.ErrNoRows,
+		"fetching another org's row by ID should return no rows")
 }
 
 func TestRLS_NoSessionVariableReturnsNothing(t *testing.T) {
@@ -180,11 +215,17 @@ func TestRLS_NoSessionVariableReturnsNothing(t *testing.T) {
 	ctx := context.Background()
 	queries := db.New(conn)
 
-	// Don't set app.current_org. current_setting returns NULL,
-	// which doesn't match any rows.
 	orgs, err := queries.ListOrganizations(ctx)
 	require.NoError(t, err)
-	assert.Empty(t, orgs, "no session variable means no rows visible")
+	assert.Empty(t, orgs)
+
+	transfers, err := queries.ListTransfers(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, transfers)
+
+	entries, err := queries.ListLedgerEntries(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
 }
 
 func TestRLS_BypassRoleSeesEverything(t *testing.T) {
@@ -196,7 +237,6 @@ func TestRLS_BypassRoleSeesEverything(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Release() })
 
-	// Use the bypass role instead of app_user
 	_, err = conn.Exec(ctx, "SET ROLE app_system")
 	require.NoError(t, err)
 
@@ -204,47 +244,19 @@ func TestRLS_BypassRoleSeesEverything(t *testing.T) {
 
 	orgs, err := queries.ListOrganizations(ctx)
 	require.NoError(t, err)
-	assert.Len(t, orgs, 2, "bypass role should see all organizations")
+	assert.Len(t, orgs, 2)
 
-	projects, err := queries.ListProjects(ctx)
+	programs, err := queries.ListPrograms(ctx)
 	require.NoError(t, err)
-	assert.Len(t, projects, 3, "bypass role should see all projects")
+	assert.Len(t, programs, 2)
 
-	accounts, err := queries.ListAccounts(ctx)
+	transfers, err := queries.ListTransfers(ctx)
 	require.NoError(t, err)
-	assert.Len(t, accounts, 3, "bypass role should see all accounts")
-}
+	assert.Len(t, transfers, 2)
 
-func TestRLS_InsertAndReadBack(t *testing.T) {
-	tdb, err := dbtest.New(t, seedTwoOrgs)
+	entries, err := queries.ListLedgerEntries(ctx)
 	require.NoError(t, err)
-
-	conn := acquireAsAppUser(t, tdb.GetTestPool(t).Pool)
-	ctx := context.Background()
-	queries := db.New(conn)
-
-	require.NoError(t, setOrg(ctx, conn, org1ID))
-
-	created, err := queries.CreateProject(ctx, &db.CreateProjectParams{
-		OrganizationID: org1ID,
-		Name:           "Project Delta",
-		Description:    strPtr("Created during test"),
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "Project Delta", created.Name)
-
-	fetched, err := queries.GetProject(ctx, created.ID)
-	require.NoError(t, err)
-	assert.Equal(t, created.ID, fetched.ID)
-
-	projects, err := queries.ListProjects(ctx)
-	require.NoError(t, err)
-	assert.Len(t, projects, 3)
-
-	require.NoError(t, setOrg(ctx, conn, org2ID))
-	projects, err = queries.ListProjects(ctx)
-	require.NoError(t, err)
-	assert.Len(t, projects, 1)
+	assert.Len(t, entries, 3)
 }
 
 func strPtr(s string) *string {

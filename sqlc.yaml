@@ -4,7 +4,11 @@ sql:
     queries: "db/"
     schema:
       - "prisma/migrations/00001_init/migration.sql"
-      - "prisma/migrations/00002_rls/migration.sql"
+      - "prisma/migrations/00002_add_org_columns/migration.sql"
+      - "prisma/migrations/00003_connection_layer/migration.sql"
+      - "prisma/migrations/00004_backfill/migration.sql"
+      - "prisma/migrations/00005_constraints/migration.sql"
+      - "prisma/migrations/00006_rls/migration.sql"
     gen:
       go:
         package: "db"

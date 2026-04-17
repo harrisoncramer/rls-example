@@ -7,20 +7,31 @@ SELECT * FROM organization ORDER BY created_at;
 -- name: CreateOrganization :one
 INSERT INTO organization (id, name) VALUES (sqlc.arg('id'), sqlc.arg('name')) RETURNING *;
 
--- name: GetAccount :one
-SELECT * FROM account WHERE id = sqlc.arg('id');
+-- name: GetProgram :one
+SELECT * FROM program WHERE id = sqlc.arg('id');
 
--- name: ListAccounts :many
-SELECT * FROM account ORDER BY created_at;
+-- name: ListPrograms :many
+SELECT * FROM program ORDER BY created_at;
 
--- name: CreateAccount :one
-INSERT INTO account (organization_id, email) VALUES (sqlc.arg('organization_id'), sqlc.arg('email')) RETURNING *;
+-- name: CreateProgram :one
+INSERT INTO program (organization_id, name) VALUES (sqlc.arg('organization_id'), sqlc.arg('name')) RETURNING *;
 
--- name: GetProject :one
-SELECT * FROM project WHERE id = sqlc.arg('id');
+-- name: GetTransfer :one
+SELECT * FROM transfer WHERE id = sqlc.arg('id');
 
--- name: ListProjects :many
-SELECT * FROM project ORDER BY created_at;
+-- name: ListTransfers :many
+SELECT * FROM transfer ORDER BY created_at;
 
--- name: CreateProject :one
-INSERT INTO project (organization_id, name, description) VALUES (sqlc.arg('organization_id'), sqlc.arg('name'), sqlc.arg('description')) RETURNING *;
+-- name: CreateTransfer :one
+-- organization_id is auto-populated from the session variable via column default
+INSERT INTO transfer (program_id, amount, description) VALUES (sqlc.arg('program_id'), sqlc.arg('amount'), sqlc.arg('description')) RETURNING *;
+
+-- name: GetLedgerEntry :one
+SELECT * FROM ledger_entry WHERE id = sqlc.arg('id');
+
+-- name: ListLedgerEntries :many
+SELECT * FROM ledger_entry ORDER BY created_at;
+
+-- name: CreateLedgerEntry :one
+-- organization_id is auto-populated from the session variable via column default
+INSERT INTO ledger_entry (transfer_id, amount, entry_type) VALUES (sqlc.arg('transfer_id'), sqlc.arg('amount'), sqlc.arg('entry_type')) RETURNING *;
