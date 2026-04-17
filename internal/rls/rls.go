@@ -24,22 +24,7 @@ type DBTX interface {
 // connection is cleaned up automatically when the test ends.
 func AcquireAsAppUser(t *testing.T, pool *pgxpool.Pool) (*pgxpool.Conn, error) {
 	t.Helper()
-	ctx := context.Background()
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire connection: %w", err)
-	}
-	if _, err := conn.Exec(ctx, "SET ROLE app_user"); err != nil {
-		conn.Release()
-		return nil, fmt.Errorf("failed to set role app_user: %w", err)
-	}
-	t.Cleanup(func() {
-		if _, err := conn.Exec(ctx, "RESET ROLE"); err != nil {
-			t.Errorf("failed to reset role: %v", err)
-		}
-		conn.Release()
-	})
-	return conn, nil
+	return acquireWithRole(t, pool, "app_user")
 }
 
 // AcquireAsAdmin gets a connection from the pool and switches to the app_system
@@ -47,22 +32,48 @@ func AcquireAsAppUser(t *testing.T, pool *pgxpool.Pool) (*pgxpool.Conn, error) {
 // and background jobs that span organizations.
 func AcquireAsAdmin(t *testing.T, pool *pgxpool.Pool) (*pgxpool.Conn, error) {
 	t.Helper()
+	return acquireWithRole(t, pool, "app_system")
+}
+
+func acquireWithRole(t *testing.T, pool *pgxpool.Pool, role string) (*pgxpool.Conn, error) {
+	t.Helper()
 	ctx := context.Background()
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire connection: %w", err)
 	}
-	if _, err := conn.Exec(ctx, "SET ROLE app_system"); err != nil {
+	if err := SetRole(ctx, conn, role); err != nil {
 		conn.Release()
-		return nil, fmt.Errorf("failed to set role app_system: %w", err)
+		return nil, err
 	}
 	t.Cleanup(func() {
-		if _, err := conn.Exec(ctx, "RESET ROLE"); err != nil {
+		if err := ResetRole(ctx, conn); err != nil {
 			t.Errorf("failed to reset role: %v", err)
 		}
 		conn.Release()
 	})
 	return conn, nil
+}
+
+// SetRole sets the PostgreSQL role on a connection. Use "app_user" for
+// RLS-enforced connections or "app_system" for bypass connections. This is the
+// lower-level building block when you need manual connection lifecycle control
+// (e.g. acquiring and releasing mid-test to verify pool behavior).
+func SetRole(ctx context.Context, db DBTX, role string) error {
+	_, err := db.Exec(ctx, fmt.Sprintf("SET ROLE %s", role))
+	if err != nil {
+		return fmt.Errorf("failed to set role %s: %w", role, err)
+	}
+	return nil
+}
+
+// ResetRole clears the PostgreSQL role back to the connection's default.
+func ResetRole(ctx context.Context, db DBTX) error {
+	_, err := db.Exec(ctx, "RESET ROLE")
+	if err != nil {
+		return fmt.Errorf("failed to reset role: %w", err)
+	}
+	return nil
 }
 
 // SetOrg sets the app.current_org session variable on a connection. This is

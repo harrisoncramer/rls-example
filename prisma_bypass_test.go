@@ -106,11 +106,15 @@ func TestPrismaBypass_SamePoolDifferentRoles(t *testing.T) {
 	ctx := context.Background()
 	pool := tdb.GetTestPool(t).Pool
 
-	// Connection 1: admin, sees everything
+	// Connection 1: admin, sees everything.
+	// We use pool.Acquire + rls.SetRole directly (instead of AcquireAsAdmin)
+	// because this test needs to manually release and re-acquire connections
+	// mid-test to prove there's no state leakage between pool checkouts.
+	// AcquireAsAdmin registers a t.Cleanup that releases on test end, but
+	// pgxpool panics on double release.
 	adminConn, err := pool.Acquire(ctx)
 	require.NoError(t, err)
-	_, err = adminConn.Exec(ctx, "SET ROLE app_system")
-	require.NoError(t, err)
+	require.NoError(t, rls.SetRole(ctx, adminConn, "app_system"))
 
 	adminTransfers, err := db.New(adminConn).ListTransfers(ctx)
 	require.NoError(t, err)
@@ -120,8 +124,7 @@ func TestPrismaBypass_SamePoolDifferentRoles(t *testing.T) {
 	// Connection 2: app_user with org1 context, sees only org1
 	appConn, err := pool.Acquire(ctx)
 	require.NoError(t, err)
-	_, err = appConn.Exec(ctx, "SET ROLE app_user")
-	require.NoError(t, err)
+	require.NoError(t, rls.SetRole(ctx, appConn, "app_user"))
 	require.NoError(t, rls.SetOrg(ctx, appConn, org1ID))
 
 	appTransfers, err := db.New(appConn).ListTransfers(ctx)
@@ -134,8 +137,7 @@ func TestPrismaBypass_SamePoolDifferentRoles(t *testing.T) {
 	// override whatever was set before.
 	adminConn2, err := pool.Acquire(ctx)
 	require.NoError(t, err)
-	_, err = adminConn2.Exec(ctx, "SET ROLE app_system")
-	require.NoError(t, err)
+	require.NoError(t, rls.SetRole(ctx, adminConn2, "app_system"))
 
 	adminTransfers2, err := db.New(adminConn2).ListTransfers(ctx)
 	require.NoError(t, err)
