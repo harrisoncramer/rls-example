@@ -9,38 +9,5 @@ DATABASE_URL = "postgresql://postgres:postgres@localhost:5433/rls_example?sslmod
 TEST_DATABASE_URL_BASE = "postgresql://postgres:postgres@localhost:5433"
 TEST_DATABASE_NAME = "rls_example"
 
-[tasks."db:up"]
-description = "Start PostgreSQL in Docker"
-run = "docker compose up -d --wait"
-
-[tasks."db:down"]
-description = "Stop PostgreSQL"
-run = "docker compose down"
-
-[tasks."db:reset"]
-description = "Reset database volumes"
-run = "docker compose down -v && docker compose up -d --wait"
-
-[tasks."db:migrate"]
-description = "Run Prisma migrations"
-run = "prisma migrate deploy"
-
-[tasks."db:migrate:create"]
-description = "Create a new migration"
-run = "prisma migrate dev --name {{arg(i=0)}}"
-
-[tasks."sqlc:generate"]
-description = "Generate SQLC code"
-run = "sqlc generate"
-
-[tasks.test]
-description = "Run Go tests"
-run = "go test -v -count=1 ./..."
-
-[tasks.setup]
-description = "Start DB, run migrations, generate code"
-depends = ["db:up"]
-run = """
-mise run db:migrate
-mise run sqlc:generate
-"""
+[task_config]
+dir = "{{config_root}}/mise/tasks"

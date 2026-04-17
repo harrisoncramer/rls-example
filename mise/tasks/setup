@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+#MISE description="Start DB, run migrations, generate code"
+#MISE depends=["db:up"]
+
+mise run db:migrate
+mise run sqlc:generate

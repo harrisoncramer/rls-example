@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+#MISE description="Run Go tests"
+
+go test -v -count=1 ./...

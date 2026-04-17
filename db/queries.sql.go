@@ -12,7 +12,10 @@ import (
 )
 
 const createLedgerEntry = `-- name: CreateLedgerEntry :one
-INSERT INTO ledger_entry (transfer_id, amount, entry_type) VALUES ($1, $2, $3) RETURNING id, transfer_id, amount, entry_type, created_at, organization_id
+INSERT INTO ledger_entry (transfer_id, amount, entry_type)
+    VALUES ($1, $2, $3)
+RETURNING
+    id, transfer_id, amount, entry_type, created_at, organization_id
 `
 
 type CreateLedgerEntryParams struct {
@@ -37,7 +40,10 @@ func (q *Queries) CreateLedgerEntry(ctx context.Context, arg *CreateLedgerEntryP
 }
 
 const createOrganization = `-- name: CreateOrganization :one
-INSERT INTO organization (id, name) VALUES ($1, $2) RETURNING id, name, created_at, updated_at
+INSERT INTO organization (id, name)
+    VALUES ($1, $2)
+RETURNING
+    id, name, created_at, updated_at
 `
 
 type CreateOrganizationParams struct {
@@ -58,7 +64,10 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg *CreateOrganizatio
 }
 
 const createProgram = `-- name: CreateProgram :one
-INSERT INTO program (organization_id, name) VALUES ($1, $2) RETURNING id, organization_id, name, created_at, updated_at
+INSERT INTO program (organization_id, name)
+    VALUES ($1, $2)
+RETURNING
+    id, organization_id, name, created_at, updated_at
 `
 
 type CreateProgramParams struct {
@@ -80,7 +89,10 @@ func (q *Queries) CreateProgram(ctx context.Context, arg *CreateProgramParams) (
 }
 
 const createTransfer = `-- name: CreateTransfer :one
-INSERT INTO transfer (program_id, amount, description) VALUES ($1, $2, $3) RETURNING id, program_id, amount, description, created_at, updated_at, organization_id
+INSERT INTO transfer (program_id, amount, description)
+    VALUES ($1, $2, $3)
+RETURNING
+    id, program_id, amount, description, created_at, updated_at, organization_id
 `
 
 type CreateTransferParams struct {
@@ -106,7 +118,12 @@ func (q *Queries) CreateTransfer(ctx context.Context, arg *CreateTransferParams)
 }
 
 const getLedgerEntry = `-- name: GetLedgerEntry :one
-SELECT id, transfer_id, amount, entry_type, created_at, organization_id FROM ledger_entry WHERE id = $1
+SELECT
+    id, transfer_id, amount, entry_type, created_at, organization_id
+FROM
+    ledger_entry
+WHERE
+    id = $1
 `
 
 func (q *Queries) GetLedgerEntry(ctx context.Context, id uuid.UUID) (*LedgerEntry, error) {
@@ -124,7 +141,12 @@ func (q *Queries) GetLedgerEntry(ctx context.Context, id uuid.UUID) (*LedgerEntr
 }
 
 const getOrganization = `-- name: GetOrganization :one
-SELECT id, name, created_at, updated_at FROM organization WHERE id = $1
+SELECT
+    id, name, created_at, updated_at
+FROM
+    organization
+WHERE
+    id = $1
 `
 
 func (q *Queries) GetOrganization(ctx context.Context, id uuid.UUID) (*Organization, error) {
@@ -140,7 +162,12 @@ func (q *Queries) GetOrganization(ctx context.Context, id uuid.UUID) (*Organizat
 }
 
 const getProgram = `-- name: GetProgram :one
-SELECT id, organization_id, name, created_at, updated_at FROM program WHERE id = $1
+SELECT
+    id, organization_id, name, created_at, updated_at
+FROM
+    program
+WHERE
+    id = $1
 `
 
 func (q *Queries) GetProgram(ctx context.Context, id uuid.UUID) (*Program, error) {
@@ -157,7 +184,12 @@ func (q *Queries) GetProgram(ctx context.Context, id uuid.UUID) (*Program, error
 }
 
 const getTransfer = `-- name: GetTransfer :one
-SELECT id, program_id, amount, description, created_at, updated_at, organization_id FROM transfer WHERE id = $1
+SELECT
+    id, program_id, amount, description, created_at, updated_at, organization_id
+FROM
+    transfer
+WHERE
+    id = $1
 `
 
 func (q *Queries) GetTransfer(ctx context.Context, id uuid.UUID) (*Transfer, error) {
@@ -176,7 +208,12 @@ func (q *Queries) GetTransfer(ctx context.Context, id uuid.UUID) (*Transfer, err
 }
 
 const listLedgerEntries = `-- name: ListLedgerEntries :many
-SELECT id, transfer_id, amount, entry_type, created_at, organization_id FROM ledger_entry ORDER BY created_at
+SELECT
+    id, transfer_id, amount, entry_type, created_at, organization_id
+FROM
+    ledger_entry
+ORDER BY
+    created_at
 `
 
 func (q *Queries) ListLedgerEntries(ctx context.Context) ([]*LedgerEntry, error) {
@@ -207,7 +244,12 @@ func (q *Queries) ListLedgerEntries(ctx context.Context) ([]*LedgerEntry, error)
 }
 
 const listOrganizations = `-- name: ListOrganizations :many
-SELECT id, name, created_at, updated_at FROM organization ORDER BY created_at
+SELECT
+    id, name, created_at, updated_at
+FROM
+    organization
+ORDER BY
+    created_at
 `
 
 func (q *Queries) ListOrganizations(ctx context.Context) ([]*Organization, error) {
@@ -236,7 +278,12 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]*Organization, error
 }
 
 const listPrograms = `-- name: ListPrograms :many
-SELECT id, organization_id, name, created_at, updated_at FROM program ORDER BY created_at
+SELECT
+    id, organization_id, name, created_at, updated_at
+FROM
+    program
+ORDER BY
+    created_at
 `
 
 func (q *Queries) ListPrograms(ctx context.Context) ([]*Program, error) {
@@ -266,7 +313,12 @@ func (q *Queries) ListPrograms(ctx context.Context) ([]*Program, error) {
 }
 
 const listTransfers = `-- name: ListTransfers :many
-SELECT id, program_id, amount, description, created_at, updated_at, organization_id FROM transfer ORDER BY created_at
+SELECT
+    id, program_id, amount, description, created_at, updated_at, organization_id
+FROM
+    transfer
+ORDER BY
+    created_at
 `
 
 func (q *Queries) ListTransfers(ctx context.Context) ([]*Transfer, error) {

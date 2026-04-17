@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+#MISE description="Create a new migration"
+
+if [ $# -eq 0 ]; then
+    echo "Usage: mise run db:migrate-create <name>"
+    exit 1
+fi
+
+prisma migrate dev --name "$1"
