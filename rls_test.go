@@ -45,7 +45,7 @@ var (
 //   - Org One: 1 program, 1 transfer ($1000), 2 ledger entries (debit + credit)
 //   - Org Two: 1 program, 1 transfer ($2000), 1 ledger entry (debit)
 func seedTwoOrgs(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, `SET ROLE app_system`); err != nil {
+	if err := rls.SetRole(ctx, pool, "app_system"); err != nil {
 		return err
 	}
 
@@ -106,7 +106,7 @@ func seedTwoOrgs(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
-	if _, err := pool.Exec(ctx, `RESET ROLE`); err != nil {
+	if err := rls.ResetRole(ctx, pool); err != nil {
 		return err
 	}
 	return nil

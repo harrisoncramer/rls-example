@@ -73,16 +73,19 @@ The SQLC-generated `CreateTransfer` and `CreateLedgerEntry` functions don't even
 
 ### Roles
 
+In production, each role would be a dedicated Postgres login user with its own connection pool:
+
 - `postgres` (superuser): Owns the tables. Used by Prisma for migrations.
-- `app_user` (NOLOGIN): The role Go services use via `SET ROLE`. Subject to RLS policies.
-- `app_system` (NOLOGIN, BYPASSRLS): For admin/system operations, background jobs that span tenants, data backfills.
+- `app_user` (LOGIN, NOBYPASSRLS): The scoped pool connects as this user. Subject to RLS policies. API handlers use this pool and set `app.current_org` per request. Single-tenant River workers also set `app.current_org` from job args.
+- `app_system` (LOGIN, BYPASSRLS): The admin pool connects as this user. Cross-tenant River workers, data backfills, and admin tooling use this pool.
+
+In the test suite, we use a single pool (as `postgres`) and `SET ROLE` to simulate both roles.
 
 ### Session variable
 
-Before executing queries, a service sets the org context on the connection:
+On the scoped pool, middleware sets the org context on each connection checkout:
 
 ```sql
-SET ROLE app_user;
 SET app.current_org = '<organization_id>';
 ```
 

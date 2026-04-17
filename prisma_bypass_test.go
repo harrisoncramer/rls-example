@@ -85,10 +85,10 @@ func TestPrismaBypass_AdminCanWriteToAnyTenant(t *testing.T) {
 	assert.Len(t, programs, 4)
 }
 
-// TestPrismaBypass_SamePoolDifferentRoles simulates a real setup where the
-// same pgxpool serves both admin and service connections. This is important
-// because in production we don't run separate pools — we use SET ROLE to
-// switch between app_user and app_system on the same underlying connections.
+// TestPrismaBypass_SamePoolDifferentRoles verifies that role state doesn't
+// leak between pool checkouts. In production, we'd run separate pools with
+// dedicated Postgres login roles (app_user for scoped, app_system for admin).
+// In tests, we share a single pool and use SET ROLE to simulate both.
 //
 // The test verifies three things:
 //  1. An admin connection sees all data (2 transfers across both orgs)
@@ -96,9 +96,8 @@ func TestPrismaBypass_AdminCanWriteToAnyTenant(t *testing.T) {
 //  3. A new admin connection acquired AFTER the app_user connection was released
 //     does NOT inherit the app_user's restrictions or session variable
 //
-// Point 3 is the critical one for connection pooling safety. If SET ROLE or
-// app.current_org leaked between pool checkouts, one tenant could see another's
-// data. The pool's connection reset (DISCARD ALL or explicit RESET) prevents this.
+// Point 3 is the critical one: if session state leaked between pool checkouts,
+// one tenant could see another's data.
 func TestPrismaBypass_SamePoolDifferentRoles(t *testing.T) {
 	tdb, err := dbtest.New(t, seedTwoOrgs)
 	require.NoError(t, err)
