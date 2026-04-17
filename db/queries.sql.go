@@ -12,8 +12,14 @@ import (
 )
 
 const createLedgerEntry = `-- name: CreateLedgerEntry :one
-INSERT INTO ledger_entry (transfer_id, amount, entry_type)
-    VALUES ($1, $2, $3)
+INSERT INTO ledger_entry(
+    transfer_id,
+    amount,
+    entry_type)
+VALUES (
+    $1,
+    $2,
+    $3)
 RETURNING
     id, transfer_id, amount, entry_type, created_at, organization_id
 `
@@ -40,8 +46,12 @@ func (q *Queries) CreateLedgerEntry(ctx context.Context, arg *CreateLedgerEntryP
 }
 
 const createOrganization = `-- name: CreateOrganization :one
-INSERT INTO organization (id, name)
-    VALUES ($1, $2)
+INSERT INTO organization(
+    id,
+    name)
+VALUES (
+    $1,
+    $2)
 RETURNING
     id, name, created_at, updated_at
 `
@@ -64,8 +74,12 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg *CreateOrganizatio
 }
 
 const createProgram = `-- name: CreateProgram :one
-INSERT INTO program (organization_id, name)
-    VALUES ($1, $2)
+INSERT INTO program(
+    organization_id,
+    name)
+VALUES (
+    $1,
+    $2)
 RETURNING
     id, organization_id, name, created_at, updated_at
 `
@@ -89,8 +103,14 @@ func (q *Queries) CreateProgram(ctx context.Context, arg *CreateProgramParams) (
 }
 
 const createTransfer = `-- name: CreateTransfer :one
-INSERT INTO transfer (program_id, amount, description)
-    VALUES ($1, $2, $3)
+INSERT INTO transfer(
+    program_id,
+    amount,
+    description)
+VALUES (
+    $1,
+    $2,
+    $3)
 RETURNING
     id, program_id, amount, description, created_at, updated_at, organization_id
 `
