@@ -1,13 +1,13 @@
-// Handlers for the RLS demo server. Each handler pulls a pre-configured
-// connection from the gin context (set by the Conn() middleware) and runs
-// SQLC-generated queries against it.
+// Handlers for the RLS demo server. Each handler pulls a transaction from the
+// gin context (started by the Conn() middleware) and runs SQLC-generated
+// queries against it.
 //
 // Handlers never reference organization_id. For scoped routes, the org is
-// already baked into the connection via the app.current_org session variable.
-// For admin routes, the connection runs as app_system which bypasses RLS.
-// The SQLC-generated insert functions (CreateProgram, CreateTransfer,
-// CreateLedgerEntry) omit organization_id from their params — the column
-// default current_setting('app.current_org')::uuid handles it.
+// set on the transaction via SET LOCAL app.current_org. For admin routes, the
+// transaction runs as app_system which bypasses RLS. The SQLC-generated insert
+// functions (CreateProgram, CreateTransfer, CreateLedgerEntry) omit
+// organization_id from their params — the column default
+// current_setting('app.current_org')::uuid handles it.
 package main
 
 import (

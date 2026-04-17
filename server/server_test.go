@@ -5,10 +5,11 @@ package main
 // Each test gets its own copy-on-write database with all migrations applied,
 // so tests are fully isolated from each other.
 //
-// The middleware acquires a connection from the pool, sets the role and org
-// context, and makes it available to handlers via gin.Context. These tests
-// verify that the same RLS guarantees hold when accessed through HTTP
-// endpoints, not just through direct database calls.
+// The middleware wraps each request in a transaction and uses SET LOCAL to
+// set the role and org context. SET LOCAL is automatically discarded on
+// commit/rollback, so there's no risk of leaking tenant context between
+// requests. These tests verify that the same RLS guarantees hold when
+// accessed through HTTP endpoints, not just through direct database calls.
 
 import (
 	"bytes"
