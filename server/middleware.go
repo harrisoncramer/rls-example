@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -39,7 +40,7 @@ func RequireOrg() gin.HandlerFunc {
 }
 
 // OrgFromContext extracts the organization ID stored by RequireOrg().
-func OrgFromContext(c *gin.Context) uuid.UUID {
-	v, _ := c.Get(orgCtxKey)
+func OrgFromContext(ctx context.Context) uuid.UUID {
+	v := ctx.Value(orgCtxKey)
 	return v.(uuid.UUID)
 }

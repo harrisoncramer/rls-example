@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -34,7 +35,7 @@ func NewHandler(pool *pgxpool.Pool) *Handler {
 }
 
 // scopedQueries returns SQLC queries scoped to the org from the request header.
-func (h *Handler) scopedQueries(c *gin.Context) *db.Queries {
+func (h *Handler) scopedQueries(c context.Context) *db.Queries {
 	return db.New(rls.Scoped(h.pool, OrgFromContext(c)))
 }
 
