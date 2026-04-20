@@ -1,13 +1,15 @@
-// Handlers for the RLS demo server. Each handler pulls a transaction from the
-// gin context (started by the Conn() middleware) and runs SQLC-generated
-// queries against it.
+// Handlers for the RLS demo server. Each handler creates a SQLC queries object
+// backed by an auto-scoped DBTX, so the usage looks like standard SQLC:
 //
-// Handlers never reference organization_id. For scoped routes, the org is
-// set on the transaction via SET LOCAL app.current_org. For admin routes, the
-// transaction runs as app_system which bypasses RLS. The SQLC-generated insert
-// functions (CreateProgram, CreateTransfer, CreateLedgerEntry) omit
-// organization_id from their params — the column default
-// current_setting('app.current_org')::uuid handles it.
+//	queries := db.New(rls.Scoped(pool, orgID))
+//	programs, err := queries.ListPrograms(ctx)
+//
+// Scoped handlers never reference organization_id. The org is set on the
+// transaction via SET LOCAL app.current_org, and the column default
+// current_setting('app.current_org')::uuid handles inserts.
+//
+// Admin handlers use rls.Admin(pool) which sets the app_system role
+// (BYPASSRLS) so they see all data across all tenants.
 package main
 
 import (
@@ -18,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/harrisoncramer/rls-example/db"
+	"github.com/harrisoncramer/rls-example/internal/rls"
 )
 
 // Handler holds dependencies for all route handlers.
@@ -30,6 +33,16 @@ func NewHandler(pool *pgxpool.Pool) *Handler {
 	return &Handler{pool: pool}
 }
 
+// scopedQueries returns SQLC queries scoped to the org from the request header.
+func (h *Handler) scopedQueries(c *gin.Context) *db.Queries {
+	return db.New(rls.Scoped(h.pool, OrgFromContext(c)))
+}
+
+// adminQueries returns SQLC queries with the admin role (BYPASSRLS).
+func (h *Handler) adminQueries() *db.Queries {
+	return db.New(rls.Admin(h.pool))
+}
+
 func (h *Handler) CreateOrganization(c *gin.Context) {
 	var body struct {
 		Name string `json:"name" binding:"required"`
@@ -39,10 +52,7 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 		return
 	}
 
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	org, err := queries.CreateOrganization(c.Request.Context(), &db.CreateOrganizationParams{
+	org, err := h.adminQueries().CreateOrganization(c.Request.Context(), &db.CreateOrganizationParams{
 		ID:   uuid.New(),
 		Name: body.Name,
 	})
@@ -55,10 +65,7 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 }
 
 func (h *Handler) ListOrganizations(c *gin.Context) {
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	orgs, err := queries.ListOrganizations(c.Request.Context())
+	orgs, err := h.adminQueries().ListOrganizations(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -76,10 +83,7 @@ func (h *Handler) CreateProgram(c *gin.Context) {
 		return
 	}
 
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	program, err := queries.CreateProgram(c.Request.Context(), body.Name)
+	program, err := h.scopedQueries(c).CreateProgram(c.Request.Context(), body.Name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -89,10 +93,7 @@ func (h *Handler) CreateProgram(c *gin.Context) {
 }
 
 func (h *Handler) ListPrograms(c *gin.Context) {
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	programs, err := queries.ListPrograms(c.Request.Context())
+	programs, err := h.scopedQueries(c).ListPrograms(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -112,10 +113,7 @@ func (h *Handler) CreateTransfer(c *gin.Context) {
 		return
 	}
 
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	transfer, err := queries.CreateTransfer(c.Request.Context(), &db.CreateTransferParams{
+	transfer, err := h.scopedQueries(c).CreateTransfer(c.Request.Context(), &db.CreateTransferParams{
 		ProgramID:   body.ProgramID,
 		Amount:      body.Amount,
 		Description: body.Description,
@@ -129,10 +127,7 @@ func (h *Handler) CreateTransfer(c *gin.Context) {
 }
 
 func (h *Handler) ListTransfers(c *gin.Context) {
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	transfers, err := queries.ListTransfers(c.Request.Context())
+	transfers, err := h.scopedQueries(c).ListTransfers(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -152,10 +147,7 @@ func (h *Handler) CreateLedgerEntry(c *gin.Context) {
 		return
 	}
 
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	entry, err := queries.CreateLedgerEntry(c.Request.Context(), &db.CreateLedgerEntryParams{
+	entry, err := h.scopedQueries(c).CreateLedgerEntry(c.Request.Context(), &db.CreateLedgerEntryParams{
 		TransferID: body.TransferID,
 		Amount:     body.Amount,
 		EntryType:  body.EntryType,
@@ -169,10 +161,7 @@ func (h *Handler) CreateLedgerEntry(c *gin.Context) {
 }
 
 func (h *Handler) ListLedgerEntries(c *gin.Context) {
-	conn := ConnFromContext(c)
-	queries := db.New(conn)
-
-	entries, err := queries.ListLedgerEntries(c.Request.Context())
+	entries, err := h.scopedQueries(c).ListLedgerEntries(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
