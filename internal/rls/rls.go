@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,6 +34,35 @@ type DBTX interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// GetPool gets a pool where every connection defaults to the app_user
+// role. This is the safety net: if a handler skips the RLS middleware entirely,
+// it still runs as app_user with no org set, which means RLS denies all access
+// (NULL doesn't match any UUID). Data leaks become "see nothing" bugs instead
+// of "see everything" bugs.
+//
+// The admin middleware explicitly upgrades to app_system when needed.
+func GetPool(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database URL: %w", err)
+	}
+
+	ConfigurePool(config)
+
+	var pool *pgxpool.Pool
+	for range 30 {
+		pool, err = pgxpool.NewWithConfig(ctx, config)
+		if err == nil {
+			if pingErr := pool.Ping(ctx); pingErr == nil {
+				return pool, nil
+			}
+			pool.Close()
+		}
+		time.Sleep(time.Second)
+	}
+	return nil, fmt.Errorf("gave up connecting to database: %w", err)
 }
 
 // ConfigurePool sets up the AfterConnect hook on a pool config so that every
