@@ -64,7 +64,7 @@ After the migration, all tenant-scoped tables have a denormalized `organization_
 
 ### Transaction-scoped tenant context (SET LOCAL)
 
-Every request is wrapped in a transaction. The middleware uses `SET LOCAL` to set the role and org context:
+Every database operation is wrapped in a transaction. The `rls` package uses `SET LOCAL` to set the role and org context:
 
 ```sql
 BEGIN;
@@ -76,21 +76,48 @@ COMMIT; -- context is automatically discarded
 
 `SET LOCAL` is automatically discarded when the transaction commits or rolls back. There's no risk of leaking tenant context between pool checkouts. This is the industry standard pattern used by Supabase, PostgREST, and Citus.
 
+### Auto-scoped DBTX
+
+The `rls` package provides DBTX implementations that slot directly into SQLC's `db.New()` pattern. Each call to `Query`, `QueryRow`, or `Exec` starts its own scoped transaction, executes the operation, and commits when the result is consumed. The caller never manages transactions directly:
+
+```go
+// Scoped queries (default path) -- tenant-isolated via RLS
+queries := db.New(rls.Scoped(pool, orgID))
+programs, err := queries.ListPrograms(ctx)
+
+// Admin queries (upgrade path) -- bypasses RLS for cross-tenant operations
+queries := db.New(rls.Admin(pool))
+orgs, err := queries.ListOrganizations(ctx)
+```
+
+This keeps the API identical to standard SQLC usage. The only difference is passing `rls.Scoped(pool, orgID)` or `rls.Admin(pool)` instead of `pool` directly.
+
+For operations that need multiple queries in a single transaction (atomicity), use the callback helpers:
+
+```go
+err := rls.WithScopedTx(ctx, pool, orgID, func(ctx context.Context, tx pgx.Tx) error {
+    q := db.New(tx)
+    transfer, err := q.CreateTransfer(ctx, ...)
+    entry, err := q.CreateLedgerEntry(ctx, ...)
+    return nil
+})
+```
+
 ### Defense in depth
 
 Three layers of protection:
 
-1. **Pool level** (`rls.ConfigurePool`): every new connection defaults to `app_user` via `AfterConnect`. A codepath that bypasses the transaction middleware still runs as `app_user` with no org — seeing nothing.
+1. **Pool level** (`rls.ConfigurePool`): every new connection defaults to `app_user` via `AfterConnect`. A codepath that bypasses the transaction helpers still runs as `app_user` with no org -- seeing nothing.
 2. **Transaction level**: `SET LOCAL` scopes the role and org to the transaction lifetime. No explicit cleanup needed.
 3. **Database level**: RLS policies enforce `organization_id = current_setting('app.current_org')::uuid`. NULL matches nothing (default deny).
 
-### Middleware stack
+### HTTP layer
 
-- **`Conn()`** - Global. Starts a transaction per request, sets `app.current_org` from `X-Organization-ID` header when present.
-- **`RequireOrg()`** - Per-group. Rejects requests without the org header. No DB work.
-- **`Admin()`** - Per-group. Upgrades the transaction's role to `app_system` (BYPASSRLS).
+The middleware does no database work. It only validates headers and stores the parsed org ID for handlers to use:
 
-`Conn()` and `Admin()` operate on the same transaction. A route registered outside both groups gets a transaction but with no org set — it sees nothing.
+- **`RequireOrg()`** - Parses and validates `X-Organization-ID`, stores the UUID in gin context. Rejects requests with a missing or invalid header.
+
+Handlers create queries via `h.scopedQueries(c)` or `h.adminQueries()`, which call `rls.Scoped` or `rls.Admin` under the hood. Transaction lifecycle is managed per-query by the DBTX implementation, not by middleware.
 
 ### Roles
 
@@ -149,7 +176,7 @@ Queries are split into two files:
 ### Server tests (server/server_test.go)
 
 - Full HTTP stack isolation between orgs
-- Transfer and ledger entry `organization_id` auto-populated through middleware
+- Transfer and ledger entry `organization_id` auto-populated via session variable
 - Admin endpoint sees all tenants
 - Missing/invalid org header returns 400
 - Hardened pool default deny (naked handler sees nothing)
@@ -173,12 +200,29 @@ Queries are split into two files:
 
 ## River integration
 
-Background jobs use the same RLS primitives as the HTTP layer. The `rls` package provides two helpers for workers:
+Background jobs use the same RLS primitives as the HTTP layer:
 
-- `rls.WithScopedTx(ctx, pool, orgID, fn)` — starts a scoped transaction from the org in job args, calls `fn` with the transaction, commits on success, rolls back on error.
-- `rls.WithAdminTx(ctx, pool, fn)` — starts an admin transaction for cross-tenant work.
+```go
+// Scoped worker -- pulls org from job args
+func (w *CreateTransferWorker) Work(ctx context.Context, job *river.Job[CreateTransferArgs]) error {
+    return rls.WithScopedTx(ctx, w.pool, job.Args.OrganizationID, func(ctx context.Context, tx pgx.Tx) error {
+        queries := db.New(tx)
+        _, err := queries.CreateTransfer(ctx, &db.CreateTransferParams{...})
+        return err
+    })
+}
 
-Scoped workers pull `organization_id` from their job args and pass it to `WithScopedTx`. The transaction handles `SET LOCAL ROLE app_user` and `SET LOCAL app.current_org`. Admin workers call `WithAdminTx` which sets `SET LOCAL ROLE app_system`.
+// Admin worker -- bypasses RLS for cross-tenant work
+func (w *ReconciliationWorker) Work(ctx context.Context, job *river.Job[ReconciliationArgs]) error {
+    return rls.WithAdminTx(ctx, w.pool, func(ctx context.Context, tx pgx.Tx) error {
+        queries := db.New(tx)
+        transfers, err := queries.ListTransfers(ctx)
+        return err
+    })
+}
+```
+
+Workers that need atomicity across multiple queries use `WithScopedTx` or `WithAdminTx` directly. For single-query operations, `rls.Scoped` and `rls.Admin` work the same as in HTTP handlers.
 
 See `workers/workers.go` for example implementations of both patterns.
 
